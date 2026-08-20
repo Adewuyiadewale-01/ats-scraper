@@ -59,6 +59,26 @@ test("keeps the cursor on a failed listing and resumes hydration without repeati
   assert.equal(state.queryProgress.q1.status, "completed");
 });
 
+test("does not immediately retry a Google verification challenge", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "job-discovery-blocked-search-"));
+  const stateStore = new StateStore(path.join(directory, "state.json"));
+  const query = { id: "q1", platform: "Ashby", role: "Python Developer", type: "junior", query: "fixture", allowedHosts: ["jobs.ashbyhq.com"] };
+  let searches = 0;
+  const searchProvider = {
+    search: async () => {
+      searches += 1;
+      const error = new Error("Google presented a verification page");
+      error.name = "SearchBlockedError";
+      throw error;
+    }
+  };
+  const run = await runDiscovery({ stateStore, searchProvider, settings: { maxQueriesPerRun: 1, searchRetryAttempts: 3, retryBaseDelayMs: 0 }, queryInventory: [query] });
+  const state = await stateStore.read();
+  assert.equal(searches, 1);
+  assert.equal(run.stopReason, "query_pending_retry");
+  assert.equal(state.queryProgress.q1.status, "pending_retry");
+});
+
 test("moves a job to closed only after repeated misses from its completed source query", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "job-discovery-lifecycle-"));
   const stateStore = new StateStore(path.join(directory, "state.json"));

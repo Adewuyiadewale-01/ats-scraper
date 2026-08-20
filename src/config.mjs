@@ -18,13 +18,14 @@ function normalizeSettings(input) {
   const settings = { ...defaults, ...input };
   const pairs = [
     ["minListingDelayMs", "maxListingDelayMs"], ["minPageDelayMs", "maxPageDelayMs"],
+    ["minSearchPageCooldownMs", "maxSearchPageCooldownMs"],
     ["minQueryDelayMs", "maxQueryDelayMs"], ["cooldownMinMs", "cooldownMaxMs"]
   ];
   for (const [minimum, maximum] of pairs) {
     settings[minimum] = Math.max(0, Number(settings[minimum]) || 0);
     settings[maximum] = Math.max(settings[minimum], Number(settings[maximum]) || 0);
   }
-  for (const key of ["maxQueriesPerRun", "maxListingsPerRun", "queryBurstSize", "maxPagesPerQuery", "maxSearchMinutesPerQuery", "searchRetryAttempts", "listingRetryAttempts", "staleLockMinutes", "closeAfterMisses"]) settings[key] = Math.max(1, Math.floor(Number(settings[key]) || defaults[key]));
+  for (const key of ["maxQueriesPerRun", "maxListingsPerRun", "searchPageBurstSize", "queryBurstSize", "maxPagesPerQuery", "maxSearchMinutesPerQuery", "searchRetryAttempts", "listingRetryAttempts", "staleLockMinutes", "closeAfterMisses"]) settings[key] = Math.max(1, Math.floor(Number(settings[key]) || defaults[key]));
   if (!/^\d{2}:\d{2}$/.test(settings.dailyRunTime)) throw new Error("dailyRunTime must use HH:MM format");
   new Intl.DateTimeFormat("en", { timeZone: settings.timezone }).format();
   return settings;
@@ -52,6 +53,9 @@ export function settingsFromControl(control = {}) {
     maxListingDelayMs: number("Maximum Listing Delay (ms)", defaults.maxListingDelayMs, "Maximum Delay (ms)"),
     minPageDelayMs: number("Minimum Page Delay (ms)", defaults.minPageDelayMs),
     maxPageDelayMs: number("Maximum Page Delay (ms)", defaults.maxPageDelayMs),
+    minSearchPageCooldownMs: number("Minimum Search Page Cooldown (ms)", defaults.minSearchPageCooldownMs),
+    maxSearchPageCooldownMs: number("Maximum Search Page Cooldown (ms)", defaults.maxSearchPageCooldownMs),
+    searchPageBurstSize: number("Search Page Burst Size", defaults.searchPageBurstSize),
     minQueryDelayMs: number("Minimum Inter-query Delay (ms)", defaults.minQueryDelayMs),
     maxQueryDelayMs: number("Maximum Inter-query Delay (ms)", defaults.maxQueryDelayMs),
     queryBurstSize: number("Query Burst Size", control["Batch Size"] || defaults.queryBurstSize),

@@ -35,7 +35,7 @@ export class HttpSearchProvider {
 export function createSearchProvider(environment) {
   if (environment.SEARCH_PROVIDER === "google-cse") return new GoogleCustomSearchProvider({ apiKey: environment.GOOGLE_CSE_API_KEY, engineId: environment.GOOGLE_CSE_ID });
   if (environment.SEARCH_PROVIDER === "http") return new HttpSearchProvider({ endpoint: environment.SEARCH_API_URL, token: environment.SEARCH_API_TOKEN });
-  if (environment.SEARCH_PROVIDER === "playwright-google") return new PlaywrightGoogleSearchProvider({ browser: new PlaywrightBrowser({ headed: environment.PLAYWRIGHT_HEADED !== "false" }) });
+  if (environment.SEARCH_PROVIDER === "playwright-google") return new PlaywrightGoogleSearchProvider({ browser: new PlaywrightBrowser({ headed: environment.PLAYWRIGHT_HEADED !== "false", profilePath: environment.PLAYWRIGHT_PROFILE_DIR }) });
   return new FixtureSearchProvider();
 }
 

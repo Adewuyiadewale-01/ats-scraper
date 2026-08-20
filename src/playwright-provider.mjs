@@ -29,8 +29,11 @@ export function nextPaginationState(previousThinPages, validResultCount) {
 }
 
 export class PlaywrightBrowser {
-  constructor({ cliPath = process.env.PLAYWRIGHT_CLI_PATH || defaultCliPath(), session = "daily-job-discovery", headed = true, timeoutMs = 45_000 } = {}) {
+  constructor({ cliPath = process.env.PLAYWRIGHT_CLI_PATH || defaultCliPath(), session = "daily-job-discovery", headed = true, timeoutMs = 45_000, profilePath = process.env.PLAYWRIGHT_PROFILE_DIR || "./data/browser-profile" } = {}) {
     this.cliPath = cliPath; this.session = session; this.headed = headed; this.timeoutMs = timeoutMs;
+    // Retain ordinary browser state (cookies and consent choices) across runs.
+    // This is deliberately a local, visible profile—not an automation-concealment mechanism.
+    this.profilePath = profilePath ? path.resolve(profilePath) : "";
   }
 
   async command(args) {
@@ -40,7 +43,10 @@ export class PlaywrightBrowser {
 
   async open(url) {
     const args = [this.started ? "goto" : "open", url];
-    if (!this.started && this.headed) args.push("--headed");
+    if (!this.started) {
+      if (this.headed) args.push("--headed");
+      if (this.profilePath) args.push("--persistent", "--profile", this.profilePath);
+    }
     await this.command(args);
     this.started = true;
   }
@@ -121,6 +127,11 @@ export class PlaywrightGoogleSearchProvider {
       if (paginationStop) break;
       pageNumber += 1;
       await sleep(randomBetween(Number(options.minPageDelayMs || 0), Number(options.maxPageDelayMs || options.minPageDelayMs || 0)));
+      const pageBurstSize = Math.max(1, Number(options.searchPageBurstSize || 0));
+      const shouldCoolDown = pageBurstSize > 0 && pageNumber % pageBurstSize === 0;
+      if (shouldCoolDown) {
+        await sleep(randomBetween(Number(options.minSearchPageCooldownMs || 0), Number(options.maxSearchPageCooldownMs || options.minSearchPageCooldownMs || 0)));
+      }
     }
     allResults.paginationStop = paginationStop;
     return allResults;

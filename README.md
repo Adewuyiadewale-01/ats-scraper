@@ -98,7 +98,7 @@ Raw SERP pages, partial query results, retry queues, hashes, and checkpoints nev
 
 ## Operational safeguards
 
-Pacing is configurable in `config/runtime.json` with separate randomized ranges for Google result pages, ATS listing reads, inter-query spacing, and 5–10 minute burst cooldowns. The default completes 10 full queries before each long cooldown. `maxListingsPerRun` is a daily target, not a hard mid-query cutoff: the active query always finishes before the runner stops.
+Pacing is configurable in `config/runtime.json` with separate randomized ranges for Google result pages, ATS listing reads, inter-query spacing, plus a longer pause after every three Google pages and every three completed queries. `PLAYWRIGHT_PROFILE_DIR` defaults to `./data/browser-profile`, retaining normal local browser state such as consent cookies between runs. If Google presents a verification page, the runner checkpoints the query and stops without retrying that challenge. `maxListingsPerRun` is a daily target, not a hard mid-query cutoff: the active query always finishes before the runner stops.
 
 Every Google page and every listing attempt is checkpointed locally. A verification page, safety limit, search failure, or exhausted ATS retry leaves the current query pending and keeps the cursor in place. The next run resumes from saved page results without repeating completed Google pages. Successful queries advance the cursor; after the complete enabled-query inventory is exhausted, a new cycle begins.
 

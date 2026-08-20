@@ -1,9 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { nextPaginationState, parsePlaywrightResult, PlaywrightGoogleSearchProvider, SearchBlockedError } from "../src/playwright-provider.mjs";
+import path from "node:path";
+import { nextPaginationState, parsePlaywrightResult, PlaywrightBrowser, PlaywrightGoogleSearchProvider, SearchBlockedError } from "../src/playwright-provider.mjs";
 
 test("reads JSON payloads emitted by playwright-cli eval", () => {
   assert.deepEqual(parsePlaywrightResult('### Result\n[{"title":"Junior role"}]\n### Page'), [{ title: "Junior role" }]);
+});
+
+test("opens a headed browser with a persistent local profile", async () => {
+  const browser = new PlaywrightBrowser({ profilePath: "./data/test-browser-profile", headed: true });
+  let args;
+  browser.command = async (received) => { args = received; };
+  await browser.open("https://example.com");
+  assert.deepEqual(args, ["open", "https://example.com", "--headed", "--persistent", "--profile", path.resolve("./data/test-browser-profile")]);
 });
 
 test("paginates until two ATS-valid thin pages and rejects off-domain results", async () => {

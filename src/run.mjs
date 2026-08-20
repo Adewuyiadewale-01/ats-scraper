@@ -166,6 +166,9 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
             searchError = error;
             state.queryProgress[query.id] = { ...state.queryProgress[query.id], status: "search_retry", runId: run.id, attempt, error: error.message, checkpointedAt: isoNow() };
             await checkpoint();
+            // A challenge is an explicit instruction to stop requesting Google.
+            // Keep the checkpoint and defer this query; do not immediately retry it.
+            if (error?.name === "SearchBlockedError") break;
             if (attempt < settings.searchRetryAttempts) await waitWithHeartbeat(settings.retryBaseDelayMs * 2 ** (attempt - 1), { stateStore, runId, shouldStop: () => false });
           }
         }
