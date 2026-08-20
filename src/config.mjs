@@ -17,7 +17,7 @@ export async function loadEnvironment(file = ".env") {
 function normalizeSettings(input) {
   const settings = { ...defaults, ...input };
   const pairs = [
-    ["minListingDelayMs", "maxListingDelayMs"], ["minPageDelayMs", "maxPageDelayMs"],
+    ["minListingDelayMs", "maxListingDelayMs"], ["minListingDwellMs", "maxListingDwellMs"], ["minPageDelayMs", "maxPageDelayMs"],
     ["minSearchPageCooldownMs", "maxSearchPageCooldownMs"],
     ["minQueryDelayMs", "maxQueryDelayMs"], ["cooldownMinMs", "cooldownMaxMs"]
   ];
@@ -51,6 +51,8 @@ export function settingsFromControl(control = {}) {
     maxListingsPerRun: number("Max Listings Per Run", defaults.maxListingsPerRun),
     minListingDelayMs: number("Minimum Listing Delay (ms)", defaults.minListingDelayMs, "Minimum Delay (ms)"),
     maxListingDelayMs: number("Maximum Listing Delay (ms)", defaults.maxListingDelayMs, "Maximum Delay (ms)"),
+    minListingDwellMs: number("Minimum Listing Dwell (ms)", defaults.minListingDwellMs),
+    maxListingDwellMs: number("Maximum Listing Dwell (ms)", defaults.maxListingDwellMs),
     minPageDelayMs: number("Minimum Page Delay (ms)", defaults.minPageDelayMs),
     maxPageDelayMs: number("Maximum Page Delay (ms)", defaults.maxPageDelayMs),
     minSearchPageCooldownMs: number("Minimum Search Page Cooldown (ms)", defaults.minSearchPageCooldownMs),

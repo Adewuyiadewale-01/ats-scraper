@@ -58,6 +58,14 @@ The current Apps Script uses a document lock and batched table rewrites. Company
 
 ## Run
 
+To deliberately clear all collected local state and the four canonical Sheet outputs before a fresh run:
+
+```bash
+npm run reset
+```
+
+This retains local configuration and the persistent browser profile, but clears jobs, companies, query progress, raw search history, run history, and the corresponding Sheet projections.
+
 ```bash
 # Manual run: always permitted, even when the scheduled automation is disabled.
 npm run run

@@ -65,6 +65,18 @@ async function main() {
       : "Google Sheet tabs, configuration, query inventory, and headers are ready.");
     return;
   }
+  if (command === "reset") {
+    if (!runtime.sheets?.clearProjection) throw new Error("The Apps Script Sheet transport is required to clear the live Sheet projection.");
+    const resetRunId = `reset_${Date.now()}`;
+    if (!await runtime.stateStore.acquireRunLock(resetRunId)) throw new Error("A discovery run is active; stop or let it finish before resetting state.");
+    try {
+      const [database, projection] = await Promise.all([runtime.stateStore.reset(), runtime.sheets.clearProjection()]);
+      console.log(JSON.stringify({ reset: true, database, projection }, null, 2));
+    } finally {
+      await runtime.stateStore.releaseRunLock();
+    }
+    return;
+  }
   if (command === "run") {
     const context = await runtime.getRunContext();
     const run = await runDiscovery({ ...context.dependencies, stateStore: runtime.stateStore, settings: context.settings, trigger: "manual" });
@@ -116,7 +128,7 @@ async function main() {
     }, null, 2));
     return;
   }
-  console.log("Commands: setup-sheet | run | reverify | smoke-test | live-test | schedule | status");
+  console.log("Commands: setup-sheet | reset | run | reverify | smoke-test | live-test | schedule | status");
 }
 
 main().then(() => {

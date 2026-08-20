@@ -215,6 +215,19 @@ export class StateStore {
     return { databasePath: this.filePath, jobs: count("jobs"), companies: count("companies"), runs: count("runs"), queryProgress: count("query_progress"), searchResults: count("search_results") };
   }
 
+  async reset() {
+    await this.ensureDatabase();
+    this.transaction(() => {
+      for (const table of ["metadata", "jobs", "companies", "runs", "query_progress", "live_test_usage", "search_results", "projection_sync"]) {
+        this.db.exec(`DELETE FROM ${table}`);
+      }
+    });
+    this.cache.clear();
+    if (this.legacyJsonPath) await fs.writeFile(this.legacyJsonPath, `${json(blankState())}\n`);
+    await this.write(blankState());
+    return this.stats();
+  }
+
   async projectionChanges(target, records, { reconcileAfterMs = 7 * 24 * 60 * 60 * 1000 } = {}) {
     await this.ensureDatabase();
     const existing = new Map(this.db.prepare("SELECT id, projection_hash, synced_at FROM projection_sync WHERE target = ?").all(target).map((row) => [row.id, row]));

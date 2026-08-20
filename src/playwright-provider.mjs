@@ -86,6 +86,20 @@ export class PlaywrightGoogleSearchProvider {
       const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query.query)}&start=${pageNumber * 10}`;
       await this.browser.open(searchUrl);
       await this.browser.rejectGoogleCookiesIfPresent();
+      // Scroll through the loaded results before extraction. This lets ordinary lazy
+      // content settle and makes the visible session reflect the paced page read.
+      await this.browser.runCode?.(`async page => {
+        const wait = ms => page.waitForTimeout(ms);
+        const height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+        const viewport = Math.max(window.innerHeight, 1);
+        const steps = Math.min(4, Math.max(1, Math.ceil(height / viewport) - 1));
+        for (let step = 1; step <= steps; step += 1) {
+          window.scrollTo({ top: Math.min(height, step * viewport), behavior: 'smooth' });
+          await wait(650 + Math.floor(Math.random() * 650));
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        await wait(450 + Math.floor(Math.random() * 500));
+      }`);
       const page = await this.browser.evaluate(`(() => {
         const unwrap = (value) => {
           try { const url = new URL(value, location.href); return url.hostname.endsWith('google.com') && url.pathname === '/url' ? (url.searchParams.get('q') || url.searchParams.get('url') || value) : url.href; }
@@ -142,10 +156,19 @@ export class PlaywrightGoogleSearchProvider {
 }
 
 export function createPlaywrightListingReader(browser) {
-  return async (candidate) => {
+  return async (candidate, { minDwellMs = 4_000, maxDwellMs = 7_000 } = {}) => {
     if (isCareerLandingPageUrl(candidate.canonicalUrl, candidate.platform)) return { isJobPosting: false, canonicalUrl: candidate.canonicalUrl, exclusionReason: "company_careers_landing_page" };
     await browser.open(candidate.canonicalUrl);
-    await browser.runCode("async page => { await page.waitForTimeout(2000); }");
+    const dwellMs = randomBetween(Number(minDwellMs), Math.max(Number(minDwellMs), Number(maxDwellMs)));
+    await browser.runCode(`async page => {
+      await page.waitForTimeout(${dwellMs});
+      const height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      const target = Math.min(Math.max(0, height - window.innerHeight), Math.round(window.innerHeight * 1.4));
+      if (target > 0) {
+        window.scrollTo({ top: target, behavior: 'smooth' });
+        await page.waitForTimeout(600 + Math.floor(Math.random() * 700));
+      }
+    }`);
     const listing = await browser.evaluate(`(() => {
       const body = document.body.innerText.slice(0, 100000);
       let schema;

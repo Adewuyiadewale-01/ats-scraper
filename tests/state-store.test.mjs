@@ -37,3 +37,24 @@ test("tracks only changed final Sheet projections for incremental synchronizatio
   const changed = [{ id: "job-1", values: ["job-1", "Updated"] }, rows[1]];
   assert.deepEqual((await store.projectionChanges("Jobs", changed)).map((row) => row.id), ["job-1"]);
 });
+
+test("resets durable records, raw search history, and legacy state", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "job-discovery-reset-"));
+  const legacyPath = path.join(directory, "state.json");
+  const store = new StateStore(legacyPath);
+  await store.write({ jobs: { job: { jobId: "job", canonicalUrl: "https://example.com/job" } }, companies: { company: { companyId: "company" } }, runs: { run: { id: "run" } }, queryProgress: { query: { id: "query" } }, liveTestUsage: { query: 2 }, queryCursor: 9, queryCursorId: "query" });
+  await store.recordSearchResults("query", [{ title: "Job", link: "https://example.com/job" }]);
+  await store.markProjectionSynced("Jobs", [{ id: "job", values: ["job"] }]);
+
+  const stats = await store.reset();
+  const state = await store.read();
+  assert.deepEqual(stats.jobs, 0);
+  assert.deepEqual(stats.companies, 0);
+  assert.deepEqual(stats.runs, 0);
+  assert.deepEqual(stats.queryProgress, 0);
+  assert.deepEqual(stats.searchResults, 0);
+  assert.equal(state.queryCursor, 0);
+  assert.deepEqual(state.liveTestUsage, {});
+  assert.equal((await store.projectionChanges("Jobs", [{ id: "job", values: ["job"] }])).length, 1);
+  assert.deepEqual(JSON.parse(await fs.readFile(legacyPath, "utf8")).jobs, {});
+});

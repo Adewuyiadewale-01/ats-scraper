@@ -242,6 +242,9 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
               resume: { partialResults: progress.partialResults || [], nextPage: progress.nextPage || 0, thinPages: progress.thinPages || 0 },
               maxPages: settings.maxPagesPerQuery, maxMinutes: settings.maxSearchMinutesPerQuery,
               minPageDelayMs: settings.minPageDelayMs, maxPageDelayMs: settings.maxPageDelayMs,
+              searchPageBurstSize: settings.searchPageBurstSize,
+              minSearchPageCooldownMs: settings.minSearchPageCooldownMs,
+              maxSearchPageCooldownMs: settings.maxSearchPageCooldownMs,
               onPage: async (pageCheckpoint) => {
                 await stateStore.recordSearchResults?.(query.id, pageCheckpoint.partialResults || []);
                 state.queryProgress[query.id] = { ...state.queryProgress[query.id], ...pageCheckpoint, status: "searching", runId: run.id, checkpointedAt: isoNow() };
@@ -312,7 +315,14 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
         let listing;
         let listingError;
         for (let attempt = 1; attempt <= settings.listingRetryAttempts; attempt += 1) {
-          try { listing = await listingReader(candidate); listingError = undefined; break; }
+          try {
+            listing = await listingReader(candidate, {
+              minDwellMs: settings.minListingDwellMs,
+              maxDwellMs: settings.maxListingDwellMs
+            });
+            listingError = undefined;
+            break;
+          }
           catch (error) {
             listingError = error;
             if (attempt < settings.listingRetryAttempts) await waitWithHeartbeat(settings.retryBaseDelayMs * 2 ** (attempt - 1), { stateStore, runId, shouldStop: () => false });

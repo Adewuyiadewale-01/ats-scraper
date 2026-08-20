@@ -18,8 +18,10 @@ const defaultControl = [
   ["Timezone", "Africa/Lagos", "IANA timezone used by the scheduler."],
   ["Max Queries Per Run", "180", "Use a smaller number for testing."],
   ["Max Listings Per Run", "180", "Daily verification target. The bot finishes its current query before stopping, so this can be exceeded slightly."],
-  ["Minimum Listing Delay (ms)", "1000", "Minimum spacing after a job listing read."],
-  ["Maximum Listing Delay (ms)", "3000", "Maximum spacing after a job listing read."],
+  ["Minimum Listing Delay (ms)", "8000", "Minimum spacing after a job listing read."],
+  ["Maximum Listing Delay (ms)", "15000", "Maximum spacing after a job listing read."],
+  ["Minimum Listing Dwell (ms)", "4000", "Minimum time spent loading and reading a job listing."],
+  ["Maximum Listing Dwell (ms)", "7000", "Maximum time spent loading and reading a job listing."],
   ["Minimum Page Delay (ms)", "15000", "Minimum spacing before advancing a Google results page."],
   ["Maximum Page Delay (ms)", "30000", "Maximum spacing before advancing a Google results page."],
   ["Search Page Burst Size", "3", "Pause after this many consecutive Google results pages within one query."],
@@ -182,6 +184,11 @@ export class AppsScriptSheetsClient {
   async syncProjection(payload) {
     try { return { supported: true, ...(await this.call("syncProjection", payload)) }; }
     catch (error) { if (/unsupported action/i.test(error.message)) return { supported: false }; throw error; }
+  }
+
+  async clearProjection() {
+    for (const tab of ["Jobs", "Companies", "Runs", "Review Queue"]) await this.replace(tab, []);
+    return this.syncProjection({ jobIds: [], companyIds: [], jobs: [], companies: [], reviews: [], runs: [] });
   }
 }
 
