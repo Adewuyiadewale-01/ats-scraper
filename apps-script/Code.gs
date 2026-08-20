@@ -114,7 +114,7 @@ function ensurePriorityViews() {
     if (!sheet) sheet = spreadsheet.insertSheet(view.name);
     const previousWidth = Math.max(sheet.getLastColumn(), width);
     sheet.getRange(1, 1, 1, previousWidth).clearContent();
-    sheet.getRange(1, 1, 1, width).setValues(headers).setFontWeight('bold').setBackground('#f1f3f4');
+    sheet.getRange(1, 1, 1, width).setValues([headers]).setFontWeight('bold').setBackground('#f1f3f4');
     const contentRows = Math.max(1, sheet.getMaxRows() - 1);
     sheet.getRange(2, 1, contentRows, previousWidth).clearContent();
     sheet.getRange(2, 1).setFormula(view.formula);
