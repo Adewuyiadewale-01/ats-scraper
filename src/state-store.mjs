@@ -192,6 +192,11 @@ export class StateStore {
     });
   }
 
+  async deleteSearchResultsForQuery(queryId) {
+    await this.ensureDatabase();
+    this.db.prepare("DELETE FROM search_results WHERE query_id = ?").run(queryId);
+  }
+
   async lookupJobs(candidates) {
     await this.ensureDatabase();
     const byId = this.db.prepare("SELECT id, data FROM jobs WHERE id = ?");

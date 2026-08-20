@@ -104,7 +104,7 @@ async function syncStateToSheets(sheets, state, stateStore) {
   for (const item of pendingRuns) item.sheetSyncedAt = syncedAt;
 }
 
-export async function runDiscovery({ trigger = "manual", stateStore, searchProvider, sheets, settings, queryInventory = buildQueries(), queries: suppliedQueries, listingReader = readListing, signalRules = {}, testMode = false, shouldStop = () => false, logger = console }) {
+export async function runDiscovery({ trigger = "manual", stateStore, searchProvider, sheets, settings, queryInventory = buildQueries(), queries: suppliedQueries, listingReader = readListing, signalRules = {}, testMode = false, forceHydration = false, shouldStop = () => false, logger = console }) {
   const providedSettings = settings || {};
   settings = { ...defaults, ...providedSettings };
   if (!("minListingDelayMs" in providedSettings) && "minDelayMs" in providedSettings) settings.minListingDelayMs = providedSettings.minDelayMs;
@@ -198,7 +198,8 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
       }
       const recheckAfterMs = settings.recheckAfterDays * 24 * 60 * 60 * 1000;
       const indexedKnownJobs = await stateStore.lookupJobs?.(queryCandidates) || {};
-      const { uniqueCandidates, hydrationQueue } = dedupeCandidates(queryCandidates, { ...state.jobs, ...indexedKnownJobs }, { recheckAfterMs });
+      const { uniqueCandidates, hydrationQueue: dedupedHydrationQueue } = dedupeCandidates(queryCandidates, { ...state.jobs, ...indexedKnownJobs }, { recheckAfterMs });
+      const hydrationQueue = forceHydration ? uniqueCandidates : dedupedHydrationQueue;
       run.uniqueCandidates += uniqueCandidates.length;
       const now = isoNow();
       for (const candidate of uniqueCandidates) {

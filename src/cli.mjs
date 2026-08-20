@@ -69,10 +69,11 @@ async function main() {
     return;
   }
   if (command === "smoke-test") {
+    const smokeQuery = { id: "smoke-test", platform: "Ashby", role: "Python Developer", type: "smoke-test", query: "synthetic smoke test", allowedHosts: ["jobs.ashbyhq.com"] };
     const searchProvider = { search: async () => [{ title: "Junior Python Developer — Test Record", link: "https://jobs.ashbyhq.com/daily-job-discovery/test-job-0001", snippet: "Remote role requiring Python." }] };
     const listingReader = async () => ({ title: "Junior Python Developer — Test Record", description: "This is a system smoke test. The role is fully remote and requires Python.", company: "Daily Job Discovery Test", location: "Remote", canonicalUrl: "https://jobs.ashbyhq.com/daily-job-discovery/test-job-0001" });
     const settings = { ...await runtime.getSettings(), maxQueriesPerRun: 1, maxListingsPerRun: 1, minListingDelayMs: 0, maxListingDelayMs: 0, minQueryDelayMs: 0, maxQueryDelayMs: 0, cooldownMinMs: 0, cooldownMaxMs: 0 };
-    const run = await runDiscovery({ ...runtime.dependencies, searchProvider, listingReader, stateStore: runtime.stateStore, settings, trigger: "smoke-test", testMode: true });
+    const run = await runDiscovery({ ...runtime.dependencies, searchProvider, listingReader, stateStore: runtime.stateStore, settings, queryInventory: [smokeQuery], queries: [smokeQuery], trigger: "smoke-test", testMode: true, forceHydration: true });
     console.log(JSON.stringify(run, null, 2));
     return;
   }
