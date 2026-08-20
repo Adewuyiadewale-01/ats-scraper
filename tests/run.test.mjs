@@ -37,7 +37,7 @@ test("finishes the current query before stopping at the daily listing target and
   assert.equal(state.queryProgress["Ashby:Python Developer:junior"].status, "completed");
 });
 
-test("excludes Ashby company careers pages before listing hydration", async () => {
+test("records Ashby company careers pages without listing hydration", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "job-discovery-careers-page-"));
   const stateStore = new StateStore(path.join(directory, "state.json"));
   const searchProvider = { search: async () => [{ title: "Open Positions (7)", link: "https://jobs.ashbyhq.com/cradlebio", snippet: "Careers" }] };
@@ -47,7 +47,8 @@ test("excludes Ashby company careers pages before listing hydration", async () =
   const state = await stateStore.read();
   assert.equal(reads, 0);
   assert.equal(run.uniqueCandidates, 0);
-  assert.deepEqual(state.queryProgress["Ashby:Python Developer:junior"].excludedCandidates, [{ url: "https://jobs.ashbyhq.com/cradlebio", reason: "company_careers_landing_page" }]);
+  assert.equal(Object.values(state.jobs)[0].status, "company_board");
+  assert.deepEqual(state.queryProgress["Ashby:Python Developer:junior"].companyBoardCandidates, [{ url: "https://jobs.ashbyhq.com/cradlebio", reason: "company_careers_landing_page" }]);
 });
 
 test("keeps the cursor on a failed listing and resumes hydration without repeating Google search", async () => {
