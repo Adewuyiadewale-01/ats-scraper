@@ -37,6 +37,19 @@ test("finishes the current query before stopping at the daily listing target and
   assert.equal(state.queryProgress["Ashby:Python Developer:junior"].status, "completed");
 });
 
+test("excludes Ashby company careers pages before listing hydration", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "job-discovery-careers-page-"));
+  const stateStore = new StateStore(path.join(directory, "state.json"));
+  const searchProvider = { search: async () => [{ title: "Open Positions (7)", link: "https://jobs.ashbyhq.com/cradlebio", snippet: "Careers" }] };
+  let reads = 0;
+  const listingReader = async () => { reads += 1; return {}; };
+  const run = await runDiscovery({ stateStore, searchProvider, listingReader, settings: { maxQueriesPerRun: 1, maxListingsPerRun: 5, minDelayMs: 0, maxDelayMs: 0, queryBurstSize: 99, cooldownMinMs: 0, cooldownMaxMs: 0 } });
+  const state = await stateStore.read();
+  assert.equal(reads, 0);
+  assert.equal(run.uniqueCandidates, 0);
+  assert.deepEqual(state.queryProgress["Ashby:Python Developer:junior"].excludedCandidates, [{ url: "https://jobs.ashbyhq.com/cradlebio", reason: "company_careers_landing_page" }]);
+});
+
 test("keeps the cursor on a failed listing and resumes hydration without repeating Google search", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "job-discovery-retry-"));
   const stateStore = new StateStore(path.join(directory, "state.json"));

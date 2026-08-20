@@ -3,6 +3,7 @@ import { dedupeCandidates, toCandidate } from "./dedupe.mjs";
 import { readListing } from "./listing-reader.mjs";
 import { verifySignals } from "./signals.mjs";
 import { normalizedText, stableHash } from "./url.mjs";
+import { isCareerLandingPageUrl, isJobPostingCandidate } from "./job-posting-url.mjs";
 import { companyRow, jobRow, runRow } from "./sheets.mjs";
 import { defaults } from "../config/defaults.mjs";
 
@@ -81,7 +82,7 @@ async function waitWithHeartbeat(ms, { stateStore, runId, shouldStop }) {
 }
 
 export async function syncStateToSheets(sheets, state, stateStore) {
-  const finalJobs = Object.values(state.jobs).filter((job) => job.status !== "test");
+  const finalJobs = Object.values(state.jobs).filter((job) => !["test", "excluded"].includes(job.status));
   const finalCompanyIds = new Set(finalJobs.map((job) => job.companyId));
   const finalCompanies = Object.values(state.companies).filter((company) => finalCompanyIds.has(company.companyId));
   const allJobRows = finalJobs.map((job) => ({ id: job.jobId, values: jobRow(job) }));
@@ -120,6 +121,14 @@ export async function reverifyStoredJobs({ stateStore, sheets, signalRules = {} 
     let changed = 0;
     for (const job of Object.values(state.jobs)) {
       if (job.status === "test") continue;
+      if (isCareerLandingPageUrl(job.canonicalUrl, job.platform)) {
+        const previous = JSON.stringify({ status: job.status, reviewReason: job.reviewReason });
+        job.status = "excluded";
+        job.reviewReason = "Company careers landing page, not a job posting";
+        if (previous !== JSON.stringify({ status: job.status, reviewReason: job.reviewReason })) changed += 1;
+        checked += 1;
+        continue;
+      }
       const signals = verifySignals({ title: job.title, description: job.description, location: job.location, role: job.role }, signalRules);
       const previous = JSON.stringify({ juniorStatus: job.juniorStatus, remoteStatus: job.remoteStatus, pythonStatus: job.pythonStatus, evidenceText: job.evidenceText, score: job.score, reviewReason: job.reviewReason, status: job.status });
       Object.assign(job, signals, { verificationCheckedAt: isoNow() });
@@ -222,9 +231,14 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
       state.queryProgress[query.id] = { ...state.queryProgress[query.id], status: "hydrating", stage: "listing", runId: run.id, searchResults: [...results], paginationStop: results.paginationStop || "exhausted", searchCompletedAt: isoNow() };
       await checkpoint();
       const queryCandidates = [];
+      const excludedCandidates = [];
       const querySeenJobIds = new Set();
       for (const result of results.filter((item) => item.link?.startsWith("http"))) {
         const candidate = toCandidate(result, query);
+        if (!isJobPostingCandidate(candidate)) {
+          excludedCandidates.push({ url: candidate.canonicalUrl, reason: "company_careers_landing_page" });
+          continue;
+        }
         querySeenJobIds.add(candidate.jobId);
         const prior = seenInRun.get(candidate.jobId);
         if (prior) {
@@ -264,22 +278,26 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
           failedCandidates.push({ jobId: candidate.jobId, url: candidate.canonicalUrl, error: listingError.message });
           run.errors.push(`${candidate.canonicalUrl}: ${listingError.message}`);
         } else {
-          const signals = verifySignals({ title: listing.title, description: listing.description, location: listing.location, role: candidate.role }, signalRules);
-          const previous = state.jobs[candidate.jobId];
-          const job = {
-            ...candidate, ...signals, ...listing,
-            company: listing.company || previous?.company || candidate.displayLink,
-            jobId: candidate.jobId, role: candidate.role, platform: candidate.platform,
-            sourceQueries: mergeSources(previous?.sourceQueries, candidate.sourceQueries),
-            firstSeenAt: previous?.firstSeenAt || now, lastSeenAt: now, verificationCheckedAt: isoNow(),
-            misses: 0, status: testMode ? "test" : listing.closed ? "closed" : signals.reviewReason ? "review" : "active"
-          };
-          job.companyId = refreshCompany(state.companies, job);
-          state.jobs[job.jobId] = job;
-          if (!previous) run.newJobs += 1;
-          run.hydrated += 1;
+          if (listing.isJobPosting === false) {
+            excludedCandidates.push({ url: candidate.canonicalUrl, reason: listing.exclusionReason || "careers_landing_page" });
+          } else {
+            const signals = verifySignals({ title: listing.title, description: listing.description, location: listing.location, role: candidate.role }, signalRules);
+            const previous = state.jobs[candidate.jobId];
+            const job = {
+              ...candidate, ...signals, ...listing,
+              company: listing.company || previous?.company || candidate.displayLink,
+              jobId: candidate.jobId, role: candidate.role, platform: candidate.platform,
+              sourceQueries: mergeSources(previous?.sourceQueries, candidate.sourceQueries),
+              firstSeenAt: previous?.firstSeenAt || now, lastSeenAt: now, verificationCheckedAt: isoNow(),
+              misses: 0, status: testMode ? "test" : listing.closed ? "closed" : signals.reviewReason ? "review" : "active"
+            };
+            job.companyId = refreshCompany(state.companies, job);
+            state.jobs[job.jobId] = job;
+            if (!previous) run.newJobs += 1;
+            run.hydrated += 1;
+          }
         }
-        state.queryProgress[query.id] = { ...state.queryProgress[query.id], failedCandidates, lastCandidateId: candidate.jobId, hydratedSoFar: run.hydrated, checkpointedAt: isoNow() };
+        state.queryProgress[query.id] = { ...state.queryProgress[query.id], failedCandidates, excludedCandidates, lastCandidateId: candidate.jobId, hydratedSoFar: run.hydrated, checkpointedAt: isoNow() };
         await checkpoint();
         await waitWithHeartbeat(randomBetween(settings.minListingDelayMs ?? settings.minDelayMs ?? 0, settings.maxListingDelayMs ?? settings.maxDelayMs ?? 0), { stateStore, runId, shouldStop: () => false });
       }
@@ -292,7 +310,7 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
       }
 
       recordQueryMisses(state, query, querySeenJobIds, settings.closeAfterMisses);
-      state.queryProgress[query.id] = { status: "completed", completionReason: results.paginationStop || "exhausted", completedAt: isoNow(), runId: run.id, resultsFound: results.length, uniqueCandidates: uniqueCandidates.length };
+      state.queryProgress[query.id] = { status: "completed", completionReason: results.paginationStop || "exhausted", completedAt: isoNow(), runId: run.id, resultsFound: results.length, uniqueCandidates: uniqueCandidates.length, excludedCandidates };
       run.queriesCompleted += 1;
       if (!suppliedQueries) advanceQueryCursor(state, queryInventory, query);
       await checkpoint();

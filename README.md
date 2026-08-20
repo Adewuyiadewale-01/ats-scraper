@@ -88,6 +88,8 @@ npm test
 
 Run `npm run reverify` after changing signal rules to recalculate stored jobs locally and sync only changed final records to the Sheet. It never searches Google or reloads job pages.
 
+Company careers landing pages are kept in local raw-search history for auditability but excluded before job-page hydration. For Ashby, `/{company}` is a careers board while `/{company}/{job-id}` is an individual posting.
+
 The direct-junior search is treated as **query-qualified**, not final proof. A new result receives one lightweight listing confirmation. If it reappears unchanged with all signals confirmed, the bot records it as seen without reading the listing again.
 
 Verified jobs are re-opened after the configured recheck interval even when the Google snippet is unchanged. Jobs missing from a successfully completed source query move through `possibly_closed` to `closed` after the configured number of misses.

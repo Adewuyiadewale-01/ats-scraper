@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isCareerLandingPageUrl } from "./job-posting-url.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -142,6 +143,7 @@ export class PlaywrightGoogleSearchProvider {
 
 export function createPlaywrightListingReader(browser) {
   return async (candidate) => {
+    if (isCareerLandingPageUrl(candidate.canonicalUrl, candidate.platform)) return { isJobPosting: false, canonicalUrl: candidate.canonicalUrl, exclusionReason: "company_careers_landing_page" };
     await browser.open(candidate.canonicalUrl);
     await browser.runCode("async page => { await page.waitForTimeout(2000); }");
     const listing = await browser.evaluate(`(() => {
@@ -162,10 +164,12 @@ export function createPlaywrightListingReader(browser) {
         company: schema?.hiringOrganization?.name || '',
         location: address?.addressLocality || schema?.applicantLocationRequirements?.name || (body.match(/Location\\s+([^\\n]+)/i) || [])[1] || '',
         closed: /job (?:is )?no longer available|position (?:has been|is) filled|application closed/i.test(body),
-        blocked: /access denied|verify (?:that )?you(?:'re| are) human|captcha|checking your browser/i.test(body)
+        blocked: /access denied|verify (?:that )?you(?:'re| are) human|captcha|checking your browser/i.test(body),
+        isJobPosting: Boolean(schema) || !/\bopen positions?\s*\(\d+\)/i.test(body)
       };
     })()`);
     if (listing.blocked) throw new Error("ATS page presented an access or verification challenge");
+    if (!listing.isJobPosting) return { ...listing, canonicalUrl: candidate.canonicalUrl, exclusionReason: "careers_landing_page" };
     const url = new URL(candidate.canonicalUrl);
     const pathPart = url.pathname.split('/').filter(Boolean)[0];
     const tenant = url.hostname.split('.')[0];
