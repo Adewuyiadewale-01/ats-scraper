@@ -4,6 +4,17 @@
  */
 const BOT_PROPERTIES = PropertiesService.getScriptProperties();
 const WRITABLE_TABS = new Set(['Jobs', 'Companies', 'Runs', 'Review Queue']);
+const PRIORITY_VIEWS = [
+  { name: 'High', formula: '=IFERROR(FILTER(Jobs!A2:S,Jobs!I2:I="verified",Jobs!J2:J="verified",Jobs!R2:R="active"),"")' },
+  { name: 'Medium', formula: '=IFERROR(FILTER(Jobs!A2:S,Jobs!I2:I="verified",Jobs!J2:J="conflicting",REGEXMATCH(Jobs!R2:R,"^(active|review)$")),"")' },
+  { name: 'Low I', formula: '=IFERROR(FILTER(Jobs!A2:S,Jobs!I2:I="senior_verified",Jobs!J2:J="verified",Jobs!R2:R="active"),"")' },
+  { name: 'Low II', formula: '=IFERROR(FILTER(Jobs!A2:S,Jobs!I2:I="senior_verified",Jobs!J2:J="conflicting",REGEXMATCH(Jobs!R2:R,"^(active|review)$")),"")' },
+  {
+    name: 'Needs Review',
+    formula: '=IFERROR(FILTER(Jobs!A2:S,REGEXMATCH(Jobs!R2:R,"^(active|review)$"),(((Jobs!I2:I="verified")*(Jobs!J2:J="verified")*(Jobs!R2:R="active"))+((Jobs!I2:I="verified")*(Jobs!J2:J="conflicting")*REGEXMATCH(Jobs!R2:R,"^(active|review)$"))+((Jobs!I2:I="senior_verified")*(Jobs!J2:J="verified")*(Jobs!R2:R="active"))+((Jobs!I2:I="senior_verified")*(Jobs!J2:J="conflicting")*REGEXMATCH(Jobs!R2:R,"^(active|review)$")))=0),"")'
+  },
+  { name: 'Company Boards', formula: '=IFERROR(FILTER(Jobs!A2:S,Jobs!R2:R="company_board"),"")' }
+];
 
 function jsonResponse(value) {
   return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);
@@ -11,6 +22,18 @@ function jsonResponse(value) {
 
 function doGet() {
   return jsonResponse({ ok: true, service: 'daily-job-discovery', message: 'Use authenticated POST requests for bot actions.' });
+}
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Job Discovery')
+    .addItem('Refresh priority views', 'refreshPriorityViews')
+    .addToUi();
+}
+
+function refreshPriorityViews() {
+  withDocumentLock(() => ensurePriorityViews());
+  activeSpreadsheet().toast('Priority views refreshed.', 'Job Discovery', 4);
 }
 
 function doPost(event) {
@@ -59,7 +82,24 @@ function bootstrap(request) {
   const ruleRows = [['Rules version', '3', '3'], ['Junior signals', 'junior | jr | associate | entry level | new grad | graduate | I | 1 | early career', '2'], ['Senior signals', 'senior | staff | principal | lead | manager | director', '2'], ['Remote signals', 'remote | work from home | distributed | anywhere', '2'], ['Hybrid signals', 'hybrid', '3'], ['Onsite signals', 'no remote | on-site | onsite | in office', '3'], ['Non-remote signals', 'no remote | on-site | onsite | in office | hybrid only', '2'], ['Python signals', 'python', '2']];
   if (created.includes('Rules')) append('Rules', ruleRows);
   else ensureRowsByKey('Rules', ruleRows);
+  ensurePriorityViews();
   return { created };
+}
+
+function ensurePriorityViews() {
+  const spreadsheet = activeSpreadsheet();
+  const jobs = requireSheet('Jobs');
+  const width = jobs.getLastColumn();
+  const headers = jobs.getRange(1, 1, 1, width).getValues();
+  PRIORITY_VIEWS.forEach((view) => {
+    let sheet = spreadsheet.getSheetByName(view.name);
+    if (!sheet) sheet = spreadsheet.insertSheet(view.name);
+    sheet.getRange(1, 1, 1, width).setValues(headers).setFontWeight('bold').setBackground('#f1f3f4');
+    const contentRows = Math.max(1, sheet.getMaxRows() - 1);
+    sheet.getRange(2, 1, contentRows, width).clearContent();
+    sheet.getRange(2, 1).setFormula(view.formula);
+    sheet.setFrozenRows(1);
+  });
 }
 
 function ensureRowsByKey(tab, rows) {
@@ -153,7 +193,8 @@ function syncProjection(request) {
   const companies = upsert('Companies', request.companies || []);
   const reviews = replaceRows('Review Queue', request.reviews || []);
   const runs = upsert('Runs', request.runs || []);
-  return { jobs, companies, reviews, runs, version: 2 };
+  ensurePriorityViews();
+  return { jobs, companies, reviews, runs, priorityViews: PRIORITY_VIEWS.map((view) => view.name), version: 3 };
 }
 
 function requireSheet(tab) {
