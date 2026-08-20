@@ -66,7 +66,9 @@ export const defaults = {
   queryBurstSize: 3,
   cooldownMinMs: 600_000,
   cooldownMaxMs: 900_000,
-  maxPagesPerQuery: 20,
+  // Zero disables the total-page ceiling. Query completion is instead driven by
+  // Google's next-page signal, the two-thin-pages rule, and the session timer.
+  maxPagesPerQuery: 0,
   maxSearchMinutesPerQuery: 75,
   searchRetryAttempts: 2,
   listingRetryAttempts: 3,

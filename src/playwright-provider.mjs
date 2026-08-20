@@ -76,12 +76,14 @@ export class PlaywrightGoogleSearchProvider {
     const seenUrls = new Set(allResults.map((result) => result.link));
     let pageNumber = Number(resume.nextPage || 0);
     let thinPages = Number(resume.thinPages || 0);
-    const maximumPages = Math.max(1, Number(options.maxPages || 20));
+    // A zero page ceiling means paginate until Google has no next page or two
+    // consecutive pages produce fewer than three ATS-valid results.
+    const maximumPages = Math.max(0, Number(options.maxPages ?? 0) || 0);
     const maximumMs = Math.max(60_000, Number(options.maxMinutes || 20) * 60_000);
     const startedAt = Date.now();
     let paginationStop = "";
     while (true) {
-      if (pageNumber >= maximumPages) throw new SearchSafetyLimitError(`Query reached the ${maximumPages}-page safety limit`);
+      if (maximumPages && pageNumber >= maximumPages) throw new SearchSafetyLimitError(`Query reached the ${maximumPages}-page safety limit`);
       if (Date.now() - startedAt >= maximumMs) throw new SearchSafetyLimitError(`Query reached the ${Math.round(maximumMs / 60_000)}-minute safety limit`);
       const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query.query)}&start=${pageNumber * 10}`;
       await this.browser.open(searchUrl);

@@ -25,7 +25,8 @@ function normalizeSettings(input) {
     settings[minimum] = Math.max(0, Number(settings[minimum]) || 0);
     settings[maximum] = Math.max(settings[minimum], Number(settings[maximum]) || 0);
   }
-  for (const key of ["maxQueriesPerRun", "maxListingsPerRun", "searchPageBurstSize", "queryBurstSize", "maxPagesPerQuery", "maxSearchMinutesPerQuery", "searchRetryAttempts", "listingRetryAttempts", "staleLockMinutes", "closeAfterMisses"]) settings[key] = Math.max(1, Math.floor(Number(settings[key]) || defaults[key]));
+  for (const key of ["maxQueriesPerRun", "maxListingsPerRun", "searchPageBurstSize", "queryBurstSize", "maxSearchMinutesPerQuery", "searchRetryAttempts", "listingRetryAttempts", "staleLockMinutes", "closeAfterMisses"]) settings[key] = Math.max(1, Math.floor(Number(settings[key]) || defaults[key]));
+  settings.maxPagesPerQuery = Math.max(0, Math.floor(Number(settings.maxPagesPerQuery) || 0));
   if (!/^\d{2}:\d{2}$/.test(settings.dailyRunTime)) throw new Error("dailyRunTime must use HH:MM format");
   new Intl.DateTimeFormat("en", { timeZone: settings.timezone }).format();
   return settings;

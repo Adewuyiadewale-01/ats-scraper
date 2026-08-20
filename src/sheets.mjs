@@ -32,7 +32,7 @@ const defaultControl = [
   ["Query Burst Size", "3", "Complete this many full queries before a longer cooldown."],
   ["Minimum Cooldown (ms)", "600000", "Shortest pause between query bursts (10 minutes)."],
   ["Maximum Cooldown (ms)", "900000", "Longest pause between query bursts (15 minutes)."],
-  ["Maximum Pages Per Query", "20", "Safety limit; reaching it pauses the query for review instead of marking it complete."],
+  ["Maximum Pages Per Query", "0", "Optional total-page ceiling. Use 0 to paginate until Google ends or two thin pages occur."],
   ["Maximum Search Minutes Per Query", "75", "Safety time limit for a single Google query; normal pagination still stops after two low-yield pages."],
   ["Search Retry Attempts", "2", "Attempts before leaving a query pending for a later run."],
   ["Listing Retry Attempts", "3", "Attempts before leaving a failed listing pending for a later run."],

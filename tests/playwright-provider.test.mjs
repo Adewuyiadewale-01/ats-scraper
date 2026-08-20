@@ -28,6 +28,27 @@ test("paginates until two ATS-valid thin pages and rejects off-domain results", 
   assert.equal(results.paginationStop, "low_yield");
 });
 
+test("continues from a saved page checkpoint when the total page ceiling is disabled", async () => {
+  const opened = [];
+  const browser = {
+    open: async (url) => { opened.push(url); },
+    rejectGoogleCookiesIfPresent: async () => {},
+    evaluate: async () => ({
+      url: "https://google.com/search?start=200", title: "Search", bodyText: "", hasNext: false,
+      results: [{ title: "Job", link: "https://jobs.ashbyhq.com/acme/page-21", snippet: "Remote" }]
+    }),
+    close: async () => {}
+  };
+  const provider = new PlaywrightGoogleSearchProvider({ browser });
+  const results = await provider.search(
+    { query: "site:jobs.ashbyhq.com backend", allowedHosts: ["jobs.ashbyhq.com"] },
+    { resume: { nextPage: 20 }, maxPages: 0, minPageDelayMs: 0, maxPageDelayMs: 0 }
+  );
+  assert.match(opened[0], /start=200/);
+  assert.equal(results.length, 1);
+  assert.equal(results.paginationStop, "exhausted");
+});
+
 test("leaves a query retryable when Google presents a challenge", async () => {
   const browser = { open: async () => {}, rejectGoogleCookiesIfPresent: async () => {}, evaluate: async () => ({ url: "https://google.com/sorry/", title: "Verify", bodyText: "Our systems detected unusual traffic", hasNext: false, results: [] }) };
   const provider = new PlaywrightGoogleSearchProvider({ browser });

@@ -18,7 +18,7 @@
   "queryBurstSize": 3,
   "cooldownMinMs": 600000,
   "cooldownMaxMs": 900000,
-  "maxPagesPerQuery": 20,
+  "maxPagesPerQuery": 0,
   "maxSearchMinutesPerQuery": 75,
   "searchRetryAttempts": 2,
   "listingRetryAttempts": 3,
