@@ -11,6 +11,19 @@ const isoNow = () => new Date().toISOString();
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const randomBetween = (minimum, maximum) => minimum + Math.floor(Math.random() * Math.max(1, maximum - minimum + 1));
 const asArrayWithStop = (values, paginationStop) => Object.assign([...values], { paginationStop });
+function dateKeyInTimezone(value, timezone) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value);
+  const fields = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+  return `${fields.year}-${fields.month}-${fields.day}`;
+}
+
+function completedHydrationsToday(state, { timezone, excludingRunId }) {
+  const today = dateKeyInTimezone(new Date(), timezone);
+  return Object.values(state.runs).reduce((total, priorRun) => {
+    if (priorRun.id === excludingRunId || priorRun.trigger === "smoke-test" || !priorRun.startedAt) return total;
+    return dateKeyInTimezone(new Date(priorRun.startedAt), timezone) === today ? total + (Number(priorRun.hydrated) || 0) : total;
+  }, 0);
+}
 
 function mergeSources(previous = [], current = []) { return [...new Set([...previous, ...current])]; }
 function companyIdentity(company, canonicalUrl) {
@@ -210,7 +223,8 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
     }
     state.activeRunId = null;
   }
-  const run = { id: runId, trigger, status: "running", startedAt: isoNow(), endedAt: "", lastCheckpointAt: isoNow(), queriesAttempted: 0, queriesCompleted: 0, resultsFound: 0, uniqueCandidates: 0, hydrated: 0, newJobs: 0, errors: [], stopReason: "" };
+  const hydratedBeforeRunToday = completedHydrationsToday(state, { timezone: settings.timezone, excludingRunId: runId });
+  const run = { id: runId, trigger, status: "running", startedAt: isoNow(), endedAt: "", lastCheckpointAt: isoNow(), queriesAttempted: 0, queriesCompleted: 0, resultsFound: 0, uniqueCandidates: 0, hydrated: 0, dailyHydratedAtStart: hydratedBeforeRunToday, newJobs: 0, errors: [], stopReason: "" };
   const checkpoint = async () => {
     run.lastCheckpointAt = isoNow();
     state.activeRunId = run.id;
@@ -226,8 +240,13 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
     const seenInRun = new Map();
     for (const query of orderedQueries) {
       if (shouldStop() && run.queriesAttempted === 0) { run.stopReason = "shutdown_requested"; break; }
-      run.queriesAttempted += 1;
       const existingProgress = suppliedQueries ? {} : (state.queryProgress?.[query.id] || {});
+      const resumingCurrentQuery = ["searching", "hydrating", "pending_retry"].includes(existingProgress.status);
+      if (hydratedBeforeRunToday + run.hydrated >= settings.maxListingsPerRun && !resumingCurrentQuery) {
+        run.stopReason = "daily_listing_target";
+        break;
+      }
+      run.queriesAttempted += 1;
       let results;
       if (["hydrating", "pending_retry"].includes(existingProgress.status) && existingProgress.searchResults?.length) {
         results = asArrayWithStop(existingProgress.searchResults, existingProgress.paginationStop || "resumed");
@@ -369,7 +388,7 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
       run.queriesCompleted += 1;
       if (!suppliedQueries) advanceQueryCursor(state, queryInventory, query);
       await checkpoint();
-      if (run.hydrated >= settings.maxListingsPerRun) { run.stopReason = "daily_listing_target"; break; }
+      if (hydratedBeforeRunToday + run.hydrated >= settings.maxListingsPerRun) { run.stopReason = "daily_listing_target"; break; }
       if (shouldStop()) { run.stopReason = "shutdown_requested"; break; }
       if (query === orderedQueries.at(-1)) break;
       const delayRange = run.queriesCompleted % settings.queryBurstSize === 0

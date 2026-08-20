@@ -37,6 +37,24 @@ test("finishes the current query before stopping at the daily listing target and
   assert.equal(state.queryProgress["Ashby:Python Developer:junior"].status, "completed");
 });
 
+test("counts earlier same-day runs toward the daily listing target", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "job-discovery-daily-total-"));
+  const stateStore = new StateStore(path.join(directory, "state.json"));
+  const prior = await stateStore.read();
+  prior.runs.prior = { id: "prior", trigger: "manual", startedAt: new Date().toISOString(), hydrated: 1 };
+  await stateStore.write(prior);
+  const queries = [
+    { id: "q1", platform: "Ashby", role: "Python Developer", type: "junior", query: "one" },
+    { id: "q2", platform: "Ashby", role: "Python Developer", type: "junior", query: "two" }
+  ];
+  const searchProvider = { search: async (query) => [{ title: `Junior Python Developer ${query.id}`, link: `https://jobs.ashbyhq.com/acme/${query.id}-role`, snippet: "Remote" }] };
+  const listingReader = async (candidate) => ({ title: candidate.title, description: "Remote Python", company: "Acme", location: "Remote", canonicalUrl: candidate.canonicalUrl });
+  const run = await runDiscovery({ stateStore, searchProvider, listingReader, settings: { timezone: "UTC", maxQueriesPerRun: 2, maxListingsPerRun: 2, minDelayMs: 0, maxDelayMs: 0, minQueryDelayMs: 0, maxQueryDelayMs: 0, queryBurstSize: 99, cooldownMinMs: 0, cooldownMaxMs: 0 }, queryInventory: queries });
+  assert.equal(run.dailyHydratedAtStart, 1);
+  assert.equal(run.queriesAttempted, 1);
+  assert.equal(run.stopReason, "daily_listing_target");
+});
+
 test("records Ashby company careers pages without listing hydration", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "job-discovery-careers-page-"));
   const stateStore = new StateStore(path.join(directory, "state.json"));
