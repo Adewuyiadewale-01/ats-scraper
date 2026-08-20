@@ -38,8 +38,8 @@ npm run setup-sheet
 `setup-sheet` creates these tabs and loads the initial query inventory:
 
 ```text
-Control | ATS Platforms | Roles & Vocabulary | Queries | Jobs
-Companies | Runs | Review Queue | Rules
+Jobs | Companies | Runs | Review Queue
+High | Medium | Low I | Low II | Needs Review | Company Boards
 ```
 
 Set `automationEnabled` to `true` in `config/runtime.json` only after a successful manual test.
@@ -52,9 +52,9 @@ Open the target Sheet, choose **Extensions → Apps Script**, and replace the pr
 
 `doGet` is a non-sensitive health check. The bot uses authenticated `doPost` requests for all setup, control reads, upserts, and run-log writes, so the token never appears in a URL.
 
-The Apps Script creates formula-driven priority tabs—`High`, `Medium`, `Low I`, `Low II`, `Needs Review`, and `Company Boards`—from the canonical `Jobs` tab. They refresh on each projection sync. The bound Sheet also has a **Job Discovery → Refresh priority views** menu for manual repair.
+The Apps Script creates formula-driven priority tabs—`High`, `Medium`, `Low I`, `Low II`, `Needs Review`, and `Company Boards`—from the canonical `Jobs` tab. They show only `job_id`, `company_id`, `company`, `title`, `location`, `application_url`, `junior_status`, `remote_status`, and `status`; the full audit record remains in `Jobs`. They refresh on each projection sync. The bound Sheet also has a **Job Discovery → Refresh priority views** menu for manual repair.
 
-The current Apps Script uses a document lock and batched table rewrites. Company notes are preserved. Re-run `npm run setup-sheet` after deploying a newer script version to append any missing Control or Rules rows.
+The current Apps Script uses a document lock and batched table rewrites. Company notes are preserved. In the default local-first mode, `npm run setup-sheet` removes the local-only configuration tabs (`Control`, `ATS Platforms`, `Roles & Vocabulary`, `Queries`, and `Rules`) instead of recreating them.
 
 ## Run
 

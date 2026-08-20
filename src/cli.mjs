@@ -58,8 +58,11 @@ async function main() {
   const runtime = await buildRuntime();
   if (command === "setup-sheet") {
     if (!runtime.sheets) throw new Error("Configure Apps Script URL/token or direct Google Sheets credentials before setup-sheet.");
-    await runtime.sheets.setup({ platforms, roles, queries: buildQueries() });
-    console.log("Google Sheet tabs, configuration, query inventory, and headers are ready.");
+    const localFirst = runtime.controlSource === "local" && runtime.configurationSource === "local";
+    await runtime.sheets.setup({ platforms, roles, queries: buildQueries(), localFirst });
+    console.log(localFirst
+      ? "Google Sheet output tabs and priority views are ready; local-only configuration tabs were removed."
+      : "Google Sheet tabs, configuration, query inventory, and headers are ready.");
     return;
   }
   if (command === "run") {

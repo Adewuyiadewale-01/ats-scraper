@@ -79,19 +79,23 @@ export class GoogleSheetsClient {
     return response.status === 204 ? undefined : response.json();
   }
 
-  async setup({ platforms, roles, queries }) {
+  async setup({ platforms, roles, queries, localFirst = false }) {
     const existing = await this.request("");
     const existingNames = new Set(existing.sheets.map((sheet) => sheet.properties.title));
-    const created = Object.keys(tabSchemas).filter((name) => !existingNames.has(name));
+    const localOnlyTabs = new Set(["Control", "ATS Platforms", "Roles & Vocabulary", "Queries", "Rules"]);
+    const desiredTabs = Object.keys(tabSchemas).filter((name) => !localFirst || !localOnlyTabs.has(name));
+    const created = desiredTabs.filter((name) => !existingNames.has(name));
     const requests = created.map((title) => ({ addSheet: { properties: { title } } }));
     if (requests.length) await this.request(":batchUpdate", { method: "POST", body: JSON.stringify({ requests }) });
     const values = {};
     for (const tab of created) values[`'${tab}'!A1`] = [tabSchemas[tab]];
-    if (created.includes("Control")) values["'Control'!A2"] = defaultControl;
-    if (created.includes("ATS Platforms")) values["'ATS Platforms'!A2"] = platforms.map((item) => [item.name, item.siteTarget, item.enabled]);
-    if (created.includes("Roles & Vocabulary")) values["'Roles & Vocabulary'!A2"] = roles.flatMap((role) => [[role.name, "junior", role.junior.join(" | ")], [role.name, "unfiltered", role.unfiltered.join(" | ")]]);
-    if (created.includes("Queries")) values["'Queries'!A2"] = queries.map((item) => [item.id, item.platform, item.role, item.type, item.query, true]);
-    if (created.includes("Rules")) values["'Rules'!A2"] = defaultRules;
+    if (!localFirst) {
+      if (created.includes("Control")) values["'Control'!A2"] = defaultControl;
+      if (created.includes("ATS Platforms")) values["'ATS Platforms'!A2"] = platforms.map((item) => [item.name, item.siteTarget, item.enabled]);
+      if (created.includes("Roles & Vocabulary")) values["'Roles & Vocabulary'!A2"] = roles.flatMap((role) => [[role.name, "junior", role.junior.join(" | ")], [role.name, "unfiltered", role.unfiltered.join(" | ")]]);
+      if (created.includes("Queries")) values["'Queries'!A2"] = queries.map((item) => [item.id, item.platform, item.role, item.type, item.query, true]);
+      if (created.includes("Rules")) values["'Rules'!A2"] = defaultRules;
+    }
     if (Object.keys(values).length) await this.request("/values:batchUpdate?valueInputOption=USER_ENTERED", { method: "POST", body: JSON.stringify({ data: Object.entries(values).map(([range, rows]) => ({ range, majorDimension: "ROWS", values: rows })) }) });
   }
 
@@ -147,8 +151,8 @@ export class AppsScriptSheetsClient {
     return body;
   }
 
-  async setup({ platforms, roles, queries }) {
-    return this.call("bootstrap", { platforms, roles, queries, tabSchemas, defaultControl });
+  async setup({ platforms, roles, queries, localFirst = false }) {
+    return this.call("bootstrap", { platforms, roles, queries, localFirst, tabSchemas, defaultControl });
   }
 
   async readControl() { return (await this.call("getControl")).control; }

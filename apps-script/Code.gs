@@ -4,16 +4,21 @@
  */
 const BOT_PROPERTIES = PropertiesService.getScriptProperties();
 const WRITABLE_TABS = new Set(['Jobs', 'Companies', 'Runs', 'Review Queue']);
+const LOCAL_ONLY_CONFIGURATION_TABS = ['Control', 'ATS Platforms', 'Roles & Vocabulary', 'Queries', 'Rules'];
+const PRIORITY_VIEW_COLUMN_INDEXES = [1, 2, 3, 4, 5, 6, 9, 10, 18];
+function priorityFormula(filters) {
+  return '=IFERROR(CHOOSECOLS(FILTER(Jobs!A2:S,' + filters + '),1,2,3,4,5,6,9,10,18),"")';
+}
 const PRIORITY_VIEWS = [
-  { name: 'High', formula: '=IFERROR(FILTER(Jobs!A2:S,Jobs!I2:I="verified",Jobs!J2:J="verified",Jobs!R2:R="active"),"")' },
-  { name: 'Medium', formula: '=IFERROR(FILTER(Jobs!A2:S,Jobs!I2:I="verified",Jobs!J2:J="conflicting",REGEXMATCH(Jobs!R2:R,"^(active|review)$")),"")' },
-  { name: 'Low I', formula: '=IFERROR(FILTER(Jobs!A2:S,Jobs!I2:I="senior_verified",Jobs!J2:J="verified",Jobs!R2:R="active"),"")' },
-  { name: 'Low II', formula: '=IFERROR(FILTER(Jobs!A2:S,Jobs!I2:I="senior_verified",Jobs!J2:J="conflicting",REGEXMATCH(Jobs!R2:R,"^(active|review)$")),"")' },
+  { name: 'High', formula: priorityFormula('Jobs!I2:I="verified",Jobs!J2:J="verified",Jobs!R2:R="active"') },
+  { name: 'Medium', formula: priorityFormula('Jobs!I2:I="verified",Jobs!J2:J="conflicting",REGEXMATCH(Jobs!R2:R,"^(active|review)$")') },
+  { name: 'Low I', formula: priorityFormula('Jobs!I2:I="senior_verified",Jobs!J2:J="verified",Jobs!R2:R="active"') },
+  { name: 'Low II', formula: priorityFormula('Jobs!I2:I="senior_verified",Jobs!J2:J="conflicting",REGEXMATCH(Jobs!R2:R,"^(active|review)$")') },
   {
     name: 'Needs Review',
-    formula: '=IFERROR(FILTER(Jobs!A2:S,REGEXMATCH(Jobs!R2:R,"^(active|review)$"),(((Jobs!I2:I="verified")*(Jobs!J2:J="verified")*(Jobs!R2:R="active"))+((Jobs!I2:I="verified")*(Jobs!J2:J="conflicting")*REGEXMATCH(Jobs!R2:R,"^(active|review)$"))+((Jobs!I2:I="senior_verified")*(Jobs!J2:J="verified")*(Jobs!R2:R="active"))+((Jobs!I2:I="senior_verified")*(Jobs!J2:J="conflicting")*REGEXMATCH(Jobs!R2:R,"^(active|review)$")))=0),"")'
+    formula: priorityFormula('REGEXMATCH(Jobs!R2:R,"^(active|review)$"),(((Jobs!I2:I="verified")*(Jobs!J2:J="verified")*(Jobs!R2:R="active"))+((Jobs!I2:I="verified")*(Jobs!J2:J="conflicting")*REGEXMATCH(Jobs!R2:R,"^(active|review)$"))+((Jobs!I2:I="senior_verified")*(Jobs!J2:J="verified")*(Jobs!R2:R="active"))+((Jobs!I2:I="senior_verified")*(Jobs!J2:J="conflicting")*REGEXMATCH(Jobs!R2:R,"^(active|review)$")))=0')
   },
-  { name: 'Company Boards', formula: '=IFERROR(FILTER(Jobs!A2:S,Jobs!R2:R="company_board"),"")' }
+  { name: 'Company Boards', formula: priorityFormula('Jobs!R2:R="company_board"') }
 ];
 
 function jsonResponse(value) {
@@ -40,7 +45,7 @@ function doPost(event) {
   try {
     const request = JSON.parse(event.postData && event.postData.contents || '{}');
     if (!request.token || request.token !== BOT_PROPERTIES.getProperty('API_TOKEN')) return jsonResponse({ ok: false, error: 'Unauthorized' });
-    if (request.action === 'bootstrap') return jsonResponse({ ok: true, ...bootstrap(request) });
+    if (request.action === 'bootstrap') return jsonResponse({ ok: true, ...withDocumentLock(() => bootstrap(request)) });
     if (request.action === 'getControl') return jsonResponse({ ok: true, control: getControl() });
     if (request.action === 'getConfiguration') return jsonResponse({ ok: true, configuration: getConfiguration() });
     if (request.action === 'upsert') return jsonResponse({ ok: true, ...withDocumentLock(() => upsert(request.tab, request.records || [])) });
@@ -65,7 +70,16 @@ function withDocumentLock(action) {
 function bootstrap(request) {
   const spreadsheet = activeSpreadsheet();
   const created = [];
-  Object.keys(request.tabSchemas || {}).forEach((name) => {
+  const removedConfigurationTabs = [];
+  const localFirst = Boolean(request.localFirst);
+  if (localFirst) {
+    LOCAL_ONLY_CONFIGURATION_TABS.forEach((name) => {
+      const sheet = spreadsheet.getSheetByName(name);
+      if (sheet) { spreadsheet.deleteSheet(sheet); removedConfigurationTabs.push(name); }
+    });
+  }
+  const schemaNames = Object.keys(request.tabSchemas || {}).filter((name) => !localFirst || !LOCAL_ONLY_CONFIGURATION_TABS.includes(name));
+  schemaNames.forEach((name) => {
     if (!spreadsheet.getSheetByName(name)) { spreadsheet.insertSheet(name); created.push(name); }
   });
   created.forEach((name) => {
@@ -74,29 +88,35 @@ function bootstrap(request) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#f1f3f4');
     sheet.setFrozenRows(1);
   });
-  if (created.includes('Control')) append('Control', request.defaultControl || []);
-  else ensureRowsByKey('Control', request.defaultControl || []);
-  if (created.includes('ATS Platforms')) append('ATS Platforms', request.platforms.map((item) => [item.name, item.siteTarget, item.enabled]));
-  if (created.includes('Roles & Vocabulary')) append('Roles & Vocabulary', request.roles.flatMap((role) => [[role.name, 'junior', role.junior.join(' | ')], [role.name, 'unfiltered', role.unfiltered.join(' | ')]]));
-  if (created.includes('Queries')) append('Queries', request.queries.map((item) => [item.id, item.platform, item.role, item.type, item.query, true]));
-  const ruleRows = [['Rules version', '3', '3'], ['Junior signals', 'junior | jr | associate | entry level | new grad | graduate | I | 1 | early career', '2'], ['Senior signals', 'senior | staff | principal | lead | manager | director', '2'], ['Remote signals', 'remote | work from home | distributed | anywhere', '2'], ['Hybrid signals', 'hybrid', '3'], ['Onsite signals', 'no remote | on-site | onsite | in office', '3'], ['Non-remote signals', 'no remote | on-site | onsite | in office | hybrid only', '2'], ['Python signals', 'python', '2']];
-  if (created.includes('Rules')) append('Rules', ruleRows);
-  else ensureRowsByKey('Rules', ruleRows);
+  if (!localFirst) {
+    if (created.includes('Control')) append('Control', request.defaultControl || []);
+    else ensureRowsByKey('Control', request.defaultControl || []);
+    if (created.includes('ATS Platforms')) append('ATS Platforms', request.platforms.map((item) => [item.name, item.siteTarget, item.enabled]));
+    if (created.includes('Roles & Vocabulary')) append('Roles & Vocabulary', request.roles.flatMap((role) => [[role.name, 'junior', role.junior.join(' | ')], [role.name, 'unfiltered', role.unfiltered.join(' | ')]]));
+    if (created.includes('Queries')) append('Queries', request.queries.map((item) => [item.id, item.platform, item.role, item.type, item.query, true]));
+    const ruleRows = [['Rules version', '3', '3'], ['Junior signals', 'junior | jr | associate | entry level | new grad | graduate | I | 1 | early career', '2'], ['Senior signals', 'senior | staff | principal | lead | manager | director', '2'], ['Remote signals', 'remote | work from home | distributed | anywhere', '2'], ['Hybrid signals', 'hybrid', '3'], ['Onsite signals', 'no remote | on-site | onsite | in office', '3'], ['Non-remote signals', 'no remote | on-site | onsite | in office | hybrid only', '2'], ['Python signals', 'python', '2']];
+    if (created.includes('Rules')) append('Rules', ruleRows);
+    else ensureRowsByKey('Rules', ruleRows);
+  }
   ensurePriorityViews();
-  return { created };
+  return { created, removedConfigurationTabs };
 }
 
 function ensurePriorityViews() {
   const spreadsheet = activeSpreadsheet();
   const jobs = requireSheet('Jobs');
-  const width = jobs.getLastColumn();
-  const headers = jobs.getRange(1, 1, 1, width).getValues();
+  const jobsWidth = jobs.getLastColumn();
+  const jobsHeaders = jobs.getRange(1, 1, 1, jobsWidth).getValues()[0];
+  const headers = PRIORITY_VIEW_COLUMN_INDEXES.map((column) => jobsHeaders[column - 1]);
+  const width = headers.length;
   PRIORITY_VIEWS.forEach((view) => {
     let sheet = spreadsheet.getSheetByName(view.name);
     if (!sheet) sheet = spreadsheet.insertSheet(view.name);
+    const previousWidth = Math.max(sheet.getLastColumn(), width);
+    sheet.getRange(1, 1, 1, previousWidth).clearContent();
     sheet.getRange(1, 1, 1, width).setValues(headers).setFontWeight('bold').setBackground('#f1f3f4');
     const contentRows = Math.max(1, sheet.getMaxRows() - 1);
-    sheet.getRange(2, 1, contentRows, width).clearContent();
+    sheet.getRange(2, 1, contentRows, previousWidth).clearContent();
     sheet.getRange(2, 1).setFormula(view.formula);
     sheet.setFrozenRows(1);
   });
