@@ -49,6 +49,25 @@ test("continues from a saved page checkpoint when the total page ceiling is disa
   assert.equal(results.paginationStop, "exhausted");
 });
 
+test("normalizes tracking variants before recording search results", async () => {
+  const browser = {
+    open: async () => {},
+    rejectGoogleCookiesIfPresent: async () => {},
+    evaluate: async () => ({
+      url: "https://google.com/search", title: "Search", bodyText: "", hasNext: false,
+      results: [
+        { title: "Job", link: "https://jobs.ashbyhq.com/acme/role-1?utm_source=google", snippet: "Remote" },
+        { title: "Job", link: "https://jobs.ashbyhq.com/acme/role-1?ref=duplicate", snippet: "Remote" }
+      ]
+    }),
+    close: async () => {}
+  };
+  const provider = new PlaywrightGoogleSearchProvider({ browser });
+  const results = await provider.search({ query: "site:jobs.ashbyhq.com python", allowedHosts: ["jobs.ashbyhq.com"] });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].link, "https://jobs.ashbyhq.com/acme/role-1");
+});
+
 test("leaves a query retryable when Google presents a challenge", async () => {
   const browser = { open: async () => {}, rejectGoogleCookiesIfPresent: async () => {}, evaluate: async () => ({ url: "https://google.com/sorry/", title: "Verify", bodyText: "Our systems detected unusual traffic", hasNext: false, results: [] }) };
   const provider = new PlaywrightGoogleSearchProvider({ browser });

@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isCareerLandingPageUrl } from "./job-posting-url.mjs";
+import { canonicalizeUrl } from "./url.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -72,8 +73,14 @@ export class PlaywrightGoogleSearchProvider {
 
   async search(query, options = {}) {
     const resume = options.resume || {};
-    const allResults = [...(resume.partialResults || [])];
-    const seenUrls = new Set(allResults.map((result) => result.link));
+    const allResults = [];
+    const seenUrls = new Set();
+    for (const result of resume.partialResults || []) {
+      try {
+        const link = canonicalizeUrl(result.link);
+        if (!seenUrls.has(link)) { seenUrls.add(link); allResults.push({ ...result, link }); }
+      } catch { /* discard malformed checkpoint URLs */ }
+    }
     let pageNumber = Number(resume.nextPage || 0);
     let thinPages = Number(resume.thinPages || 0);
     // A zero page ceiling means paginate until Google has no next page or two
@@ -130,7 +137,7 @@ export class PlaywrightGoogleSearchProvider {
       for (const result of page.results || []) {
         if (this.maxResults && allResults.length + resolved.length >= this.maxResults) break;
         let url;
-        try { url = new URL(result.link); } catch { continue; }
+        try { url = new URL(canonicalizeUrl(result.link)); } catch { continue; }
         if (!/^https?:$/.test(url.protocol) || url.hostname.endsWith("google.com") || !hostAllowed(url.hostname.toLowerCase()) || seenUrls.has(url.href)) continue;
         seenUrls.add(url.href);
         resolved.push({ title: result.title, snippet: result.snippet, link: url.href, displayLink: url.hostname });
