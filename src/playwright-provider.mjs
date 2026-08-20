@@ -90,14 +90,16 @@ export class PlaywrightGoogleSearchProvider {
       // content settle and makes the visible session reflect the paced page read.
       await this.browser.runCode?.(`async page => {
         const wait = ms => page.waitForTimeout(ms);
-        const height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-        const viewport = Math.max(window.innerHeight, 1);
+        const { height, viewport } = await page.evaluate(() => ({
+          height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+          viewport: Math.max(window.innerHeight, 1)
+        }));
         const steps = Math.min(4, Math.max(1, Math.ceil(height / viewport) - 1));
         for (let step = 1; step <= steps; step += 1) {
-          window.scrollTo({ top: Math.min(height, step * viewport), behavior: 'smooth' });
+          await page.evaluate(top => window.scrollTo({ top, behavior: 'smooth' }), Math.min(height, step * viewport));
           await wait(650 + Math.floor(Math.random() * 650));
         }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
         await wait(450 + Math.floor(Math.random() * 500));
       }`);
       const page = await this.browser.evaluate(`(() => {
@@ -162,10 +164,13 @@ export function createPlaywrightListingReader(browser) {
     const dwellMs = randomBetween(Number(minDwellMs), Math.max(Number(minDwellMs), Number(maxDwellMs)));
     await browser.runCode(`async page => {
       await page.waitForTimeout(${dwellMs});
-      const height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-      const target = Math.min(Math.max(0, height - window.innerHeight), Math.round(window.innerHeight * 1.4));
+      const { height, viewport } = await page.evaluate(() => ({
+        height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+        viewport: window.innerHeight
+      }));
+      const target = Math.min(Math.max(0, height - viewport), Math.round(viewport * 1.4));
       if (target > 0) {
-        window.scrollTo({ top: target, behavior: 'smooth' });
+        await page.evaluate(top => window.scrollTo({ top, behavior: 'smooth' }), target);
         await page.waitForTimeout(600 + Math.floor(Math.random() * 700));
       }
     }`);
