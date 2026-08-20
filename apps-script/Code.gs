@@ -56,7 +56,7 @@ function bootstrap(request) {
   if (created.includes('ATS Platforms')) append('ATS Platforms', request.platforms.map((item) => [item.name, item.siteTarget, item.enabled]));
   if (created.includes('Roles & Vocabulary')) append('Roles & Vocabulary', request.roles.flatMap((role) => [[role.name, 'junior', role.junior.join(' | ')], [role.name, 'unfiltered', role.unfiltered.join(' | ')]]));
   if (created.includes('Queries')) append('Queries', request.queries.map((item) => [item.id, item.platform, item.role, item.type, item.query, true]));
-  const ruleRows = [['Rules version', '2', '2'], ['Junior signals', 'junior | jr | associate | entry level | new grad | graduate | I | 1 | early career', '2'], ['Senior signals', 'senior | staff | principal | lead | manager | director', '2'], ['Remote signals', 'remote | work from home | distributed | anywhere', '2'], ['Non-remote signals', 'no remote | on-site | onsite | in office | hybrid only', '2'], ['Python signals', 'python', '2']];
+  const ruleRows = [['Rules version', '3', '3'], ['Junior signals', 'junior | jr | associate | entry level | new grad | graduate | I | 1 | early career', '2'], ['Senior signals', 'senior | staff | principal | lead | manager | director', '2'], ['Remote signals', 'remote | work from home | distributed | anywhere', '2'], ['Hybrid signals', 'hybrid', '3'], ['Onsite signals', 'no remote | on-site | onsite | in office', '3'], ['Non-remote signals', 'no remote | on-site | onsite | in office | hybrid only', '2'], ['Python signals', 'python', '2']];
   if (created.includes('Rules')) append('Rules', ruleRows);
   else ensureRowsByKey('Rules', ruleRows);
   return { created };

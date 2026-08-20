@@ -6,6 +6,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "run": "node src/cli.mjs run",
+    "reverify": "node src/cli.mjs reverify",
     "smoke-test": "node src/cli.mjs smoke-test",
     "live-test": "node src/cli.mjs live-test",
     "schedule": "node src/cli.mjs schedule",

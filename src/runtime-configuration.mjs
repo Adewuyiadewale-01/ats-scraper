@@ -24,5 +24,5 @@ export function configurationFromRows(configuration = {}) {
     id: row[0], platform: row[1], role: row[2], type: row[3], query: row[4], allowedHosts: platformMap.get(row[1])?.allowedHosts || []
   })) : buildQueries({ activePlatforms: platforms, activeRoles: roles });
   const rules = Object.fromEntries(ruleRows.filter((row) => row[0]).map((row) => [String(row[0]).toLowerCase(), vocabulary(row[1])]));
-  return { platforms, roles, queries, signalRules: { junior: rules["junior signals"], senior: rules["senior signals"], remote: rules["remote signals"], nonRemote: rules["non-remote signals"], python: rules["python signals"] } };
+  return { platforms, roles, queries, signalRules: { junior: rules["junior signals"], senior: rules["senior signals"], remote: rules["remote signals"], hybrid: rules["hybrid signals"], onsite: rules["onsite signals"], nonRemote: rules["non-remote signals"], python: rules["python signals"] } };
 }

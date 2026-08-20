@@ -33,9 +33,14 @@ function refreshCompany(companies, job) {
 }
 
 function recalculateCompanies(state) {
-  for (const company of Object.values(state.companies)) company.activeJobCount = 0;
+  for (const company of Object.values(state.companies)) {
+    company.activeJobCount = 0;
+    company.remoteHiringSignal = "unsure";
+  }
   for (const job of Object.values(state.jobs)) {
-    if (["active", "review", "possibly_closed"].includes(job.status) && state.companies[job.companyId]) state.companies[job.companyId].activeJobCount += 1;
+    const company = state.companies[job.companyId];
+    if (["active", "review", "possibly_closed"].includes(job.status) && company) company.activeJobCount += 1;
+    if (job.remoteStatus === "verified" && company) company.remoteHiringSignal = "verified";
   }
   for (const company of Object.values(state.companies)) company.status = company.activeJobCount ? "active" : "inactive";
 }
@@ -75,7 +80,7 @@ async function waitWithHeartbeat(ms, { stateStore, runId, shouldStop }) {
   }
 }
 
-async function syncStateToSheets(sheets, state, stateStore) {
+export async function syncStateToSheets(sheets, state, stateStore) {
   const finalJobs = Object.values(state.jobs).filter((job) => job.status !== "test");
   const finalCompanyIds = new Set(finalJobs.map((job) => job.companyId));
   const finalCompanies = Object.values(state.companies).filter((company) => finalCompanyIds.has(company.companyId));
@@ -102,6 +107,37 @@ async function syncStateToSheets(sheets, state, stateStore) {
   await stateStore.markProjectionSynced?.("Companies", companies);
   const syncedAt = isoNow();
   for (const item of pendingRuns) item.sheetSyncedAt = syncedAt;
+}
+
+export async function reverifyStoredJobs({ stateStore, sheets, signalRules = {} }) {
+  const runId = `reverify_${Date.now()}`;
+  const staleAfterMs = 360 * 60_000;
+  if (!await stateStore.acquireRunLock(runId, { staleAfterMs })) throw new Error("A run is already active.");
+  try {
+    const state = await stateStore.read();
+    if (state.activeRunId) throw new Error("A discovery run is already active.");
+    let checked = 0;
+    let changed = 0;
+    for (const job of Object.values(state.jobs)) {
+      if (job.status === "test") continue;
+      const signals = verifySignals({ title: job.title, description: job.description, location: job.location, role: job.role }, signalRules);
+      const previous = JSON.stringify({ juniorStatus: job.juniorStatus, remoteStatus: job.remoteStatus, pythonStatus: job.pythonStatus, evidenceText: job.evidenceText, score: job.score, reviewReason: job.reviewReason, status: job.status });
+      Object.assign(job, signals, { verificationCheckedAt: isoNow() });
+      if (["active", "review"].includes(job.status)) job.status = signals.reviewReason ? "review" : "active";
+      const current = JSON.stringify({ juniorStatus: job.juniorStatus, remoteStatus: job.remoteStatus, pythonStatus: job.pythonStatus, evidenceText: job.evidenceText, score: job.score, reviewReason: job.reviewReason, status: job.status });
+      if (previous !== current) changed += 1;
+      checked += 1;
+    }
+    recalculateCompanies(state);
+    await stateStore.write(state);
+    if (sheets) {
+      await syncStateToSheets(sheets, state, stateStore);
+      await stateStore.write(state);
+    }
+    return { checked, changed, sheetSynced: Boolean(sheets) };
+  } finally {
+    await stateStore.releaseRunLock();
+  }
 }
 
 export async function runDiscovery({ trigger = "manual", stateStore, searchProvider, sheets, settings, queryInventory = buildQueries(), queries: suppliedQueries, listingReader = readListing, signalRules = {}, testMode = false, forceHydration = false, shouldStop = () => false, logger = console }) {
@@ -228,7 +264,7 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
           failedCandidates.push({ jobId: candidate.jobId, url: candidate.canonicalUrl, error: listingError.message });
           run.errors.push(`${candidate.canonicalUrl}: ${listingError.message}`);
         } else {
-          const signals = verifySignals({ title: listing.title, description: listing.description, role: candidate.role }, signalRules);
+          const signals = verifySignals({ title: listing.title, description: listing.description, location: listing.location, role: candidate.role }, signalRules);
           const previous = state.jobs[candidate.jobId];
           const job = {
             ...candidate, ...signals, ...listing,

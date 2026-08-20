@@ -6,7 +6,7 @@ import { buildQueries } from "./query-builder.mjs";
 import { createListingReader, createSearchProvider } from "./search-provider.mjs";
 import { AppsScriptSheetsClient, GoogleSheetsClient } from "./sheets.mjs";
 import { StateStore } from "./state-store.mjs";
-import { runDiscovery } from "./run.mjs";
+import { reverifyStoredJobs, runDiscovery } from "./run.mjs";
 import { startScheduler } from "./scheduler.mjs";
 import { configurationFromRows } from "./runtime-configuration.mjs";
 
@@ -68,6 +68,12 @@ async function main() {
     console.log(JSON.stringify(run, null, 2));
     return;
   }
+  if (command === "reverify") {
+    const configuration = await runtime.getConfiguration();
+    const result = await reverifyStoredJobs({ stateStore: runtime.stateStore, sheets: runtime.sheets, signalRules: configuration.signalRules });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
   if (command === "smoke-test") {
     const smokeQuery = { id: "smoke-test", platform: "Ashby", role: "Python Developer", type: "smoke-test", query: "synthetic smoke test", allowedHosts: ["jobs.ashbyhq.com"] };
     const searchProvider = { search: async () => [{ title: "Junior Python Developer — Test Record", link: "https://jobs.ashbyhq.com/daily-job-discovery/test-job-0001", snippet: "Remote role requiring Python." }] };
@@ -107,7 +113,7 @@ async function main() {
     }, null, 2));
     return;
   }
-  console.log("Commands: setup-sheet | run | smoke-test | live-test | schedule | status");
+  console.log("Commands: setup-sheet | run | reverify | smoke-test | live-test | schedule | status");
 }
 
 main().then(() => {

@@ -40,10 +40,12 @@ const defaultControl = [
   ["Close After Query Misses", "3", "Mark a job closed after this many completed source-query misses."]
 ];
 const defaultRules = [
-  ["Rules version", "2", "2"],
+  ["Rules version", "3", "3"],
   ["Junior signals", "junior | jr | associate | entry level | new grad | graduate | I | 1 | early career", "2"],
   ["Senior signals", "senior | staff | principal | lead | manager | director", "2"],
   ["Remote signals", "remote | work from home | distributed | anywhere", "2"],
+  ["Hybrid signals", "hybrid", "3"],
+  ["Onsite signals", "no remote | on-site | onsite | in office", "3"],
   ["Non-remote signals", "no remote | on-site | onsite | in office | hybrid only", "2"],
   ["Python signals", "python", "2"]
 ];

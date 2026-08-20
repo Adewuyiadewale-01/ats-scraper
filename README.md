@@ -84,7 +84,9 @@ npm test
 
 `junior_status` can be `verified`, `senior_verified`, `not_found`, `unsure`, or `conflicting`.
 
-`remote_status` and `python_status` can be `verified`, `not_found`, `unsure`, or `conflicting`. Any conflict or uncertainty is placed in `Review Queue`; evidence is stored with the job record.
+`remote_status` can be `verified`, `hybrid_verified`, `onsite_verified`, `not_found`, `unsure`, or `conflicting`; `python_status` can be `verified`, `not_found`, or `unsure`. Explicit hybrid or onsite wording from the job page is never reported as remote-only. Any conflict or uncertainty is placed in `Review Queue`; evidence is stored with the job record.
+
+Run `npm run reverify` after changing signal rules to recalculate stored jobs locally and sync only changed final records to the Sheet. It never searches Google or reloads job pages.
 
 The direct-junior search is treated as **query-qualified**, not final proof. A new result receives one lightweight listing confirmation. If it reappears unchanged with all signals confirmed, the bot records it as seen without reading the listing again.
 
