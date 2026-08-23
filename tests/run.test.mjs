@@ -41,7 +41,7 @@ test("counts earlier same-day runs toward the daily listing target", async () =>
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "job-discovery-daily-total-"));
   const stateStore = new StateStore(path.join(directory, "state.json"));
   const prior = await stateStore.read();
-  prior.runs.prior = { id: "prior", trigger: "manual", startedAt: new Date().toISOString(), hydrated: 1 };
+  prior.runs.prior = { id: "prior", trigger: "manual", startedAt: new Date().toISOString(), hydrated: 1, hydratedByField: { design: 1 } };
   await stateStore.write(prior);
   const queries = [
     { id: "q1", platform: "Ashby", role: "Python Developer", type: "junior", query: "one" },
@@ -53,6 +53,21 @@ test("counts earlier same-day runs toward the daily listing target", async () =>
   assert.equal(run.dailyHydratedAtStart, 1);
   assert.equal(run.queriesAttempted, 1);
   assert.equal(run.stopReason, "daily_listing_target");
+});
+
+test("pauses a field's remaining hydration queue at its daily allocation and continues the other field", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "job-discovery-field-quota-"));
+  const stateStore = new StateStore(path.join(directory, "state.json"));
+  const engineering = { id: "engineering", platform: "Ashby", role: "Backend Developer", field: "engineering", type: "junior", query: "engineering" };
+  const design = { id: "design", platform: "Ashby", role: "Product Designer", field: "design", type: "junior", query: "design" };
+  const searchProvider = { search: async (query) => [1, 2].map((number) => ({ title: `${query.role} ${number}`, link: `https://jobs.ashbyhq.com/acme/${query.id}-${number}`, snippet: "Remote" })) };
+  const listingReader = async (candidate) => ({ title: candidate.title, description: "Remote", company: "Acme", location: "Remote", canonicalUrl: candidate.canonicalUrl });
+  const run = await runDiscovery({ stateStore, searchProvider, listingReader, settings: { maxQueriesPerRun: 2, maxListingsPerRun: 2, minDelayMs: 0, maxDelayMs: 0, minQueryDelayMs: 0, maxQueryDelayMs: 0, queryBurstSize: 99, cooldownMinMs: 0, cooldownMaxMs: 0 }, queryInventory: [engineering, design] });
+  const state = await stateStore.read();
+  assert.deepEqual(run.hydratedByField, { engineering: 1, design: 1 });
+  assert.equal(state.queryProgress.engineering.status, "pending_quota");
+  assert.equal(state.queryProgress.design.status, "pending_quota");
+  assert.equal(run.hydrated, 2);
 });
 
 test("records Ashby company careers pages without listing hydration", async () => {

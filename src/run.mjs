@@ -11,6 +11,7 @@ const isoNow = () => new Date().toISOString();
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const randomBetween = (minimum, maximum) => minimum + Math.floor(Math.random() * Math.max(1, maximum - minimum + 1));
 const asArrayWithStop = (values, paginationStop) => Object.assign([...values], { paginationStop });
+const discoveryField = (value) => value === "design" ? "design" : "engineering";
 function dateKeyInTimezone(value, timezone) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value);
   const fields = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
@@ -19,10 +20,18 @@ function dateKeyInTimezone(value, timezone) {
 
 function completedHydrationsToday(state, { timezone, excludingRunId }) {
   const today = dateKeyInTimezone(new Date(), timezone);
-  return Object.values(state.runs).reduce((total, priorRun) => {
-    if (priorRun.id === excludingRunId || priorRun.trigger === "smoke-test" || !priorRun.startedAt) return total;
-    return dateKeyInTimezone(new Date(priorRun.startedAt), timezone) === today ? total + (Number(priorRun.hydrated) || 0) : total;
-  }, 0);
+  return Object.values(state.runs).reduce((totals, priorRun) => {
+    if (priorRun.id === excludingRunId || priorRun.trigger === "smoke-test" || !priorRun.startedAt || dateKeyInTimezone(new Date(priorRun.startedAt), timezone) !== today) return totals;
+    const byField = priorRun.hydratedByField || { engineering: Number(priorRun.hydrated) || 0 };
+    for (const [field, value] of Object.entries(byField)) totals.byField[discoveryField(field)] += Number(value) || 0;
+    totals.total += Number(priorRun.hydrated) || 0;
+    return totals;
+  }, { total: 0, byField: { engineering: 0, design: 0 } });
+}
+
+function fieldQuota(settings, field) {
+  const half = Math.floor(settings.maxListingsPerRun / 2);
+  return discoveryField(field) === "design" ? half : settings.maxListingsPerRun - half;
 }
 
 function mergeSources(previous = [], current = []) { return [...new Set([...previous, ...current])]; }
@@ -224,7 +233,8 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
     state.activeRunId = null;
   }
   const hydratedBeforeRunToday = completedHydrationsToday(state, { timezone: settings.timezone, excludingRunId: runId });
-  const run = { id: runId, trigger, status: "running", startedAt: isoNow(), endedAt: "", lastCheckpointAt: isoNow(), queriesAttempted: 0, queriesCompleted: 0, resultsFound: 0, uniqueCandidates: 0, hydrated: 0, dailyHydratedAtStart: hydratedBeforeRunToday, newJobs: 0, errors: [], stopReason: "" };
+  const run = { id: runId, trigger, status: "running", startedAt: isoNow(), endedAt: "", lastCheckpointAt: isoNow(), queriesAttempted: 0, queriesCompleted: 0, resultsFound: 0, uniqueCandidates: 0, hydrated: 0, hydratedByField: { engineering: 0, design: 0 }, dailyHydratedAtStart: hydratedBeforeRunToday.total, dailyHydratedByFieldAtStart: hydratedBeforeRunToday.byField, newJobs: 0, errors: [], stopReason: "" };
+  const hydratedForFieldToday = (field) => hydratedBeforeRunToday.byField[discoveryField(field)] + run.hydratedByField[discoveryField(field)];
   const checkpoint = async () => {
     run.lastCheckpointAt = isoNow();
     state.activeRunId = run.id;
@@ -240,15 +250,12 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
     const seenInRun = new Map();
     for (const query of orderedQueries) {
       if (shouldStop() && run.queriesAttempted === 0) { run.stopReason = "shutdown_requested"; break; }
+      const field = discoveryField(query.field);
       const existingProgress = suppliedQueries ? {} : (state.queryProgress?.[query.id] || {});
-      const resumingCurrentQuery = ["searching", "hydrating", "pending_retry"].includes(existingProgress.status);
-      if (hydratedBeforeRunToday + run.hydrated >= settings.maxListingsPerRun && !resumingCurrentQuery) {
-        run.stopReason = "daily_listing_target";
-        break;
-      }
+      if (hydratedForFieldToday(field) >= fieldQuota(settings, field)) continue;
       run.queriesAttempted += 1;
       let results;
-      if (["hydrating", "pending_retry"].includes(existingProgress.status) && existingProgress.searchResults?.length) {
+      if (["hydrating", "pending_retry", "pending_quota"].includes(existingProgress.status) && existingProgress.searchResults?.length) {
         results = asArrayWithStop(existingProgress.searchResults, existingProgress.paginationStop || "resumed");
       } else {
         state.queryProgress[query.id] = { ...existingProgress, status: "searching", startedAt: existingProgress.startedAt || isoNow(), runId: run.id };
@@ -330,7 +337,18 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
       }
 
       const failedCandidates = [];
+      let deferredForQuota = false;
       for (const candidate of hydrationQueue) {
+        if (hydratedForFieldToday(field) >= fieldQuota(settings, field)) {
+          deferredForQuota = true;
+          state.queryProgress[query.id] = {
+            ...state.queryProgress[query.id], status: "pending_quota", stage: "listing", field,
+            searchResults: [...results], paginationStop: results.paginationStop || "exhausted",
+            deferredAt: isoNow(), deferredReason: `${field}_daily_listing_quota`
+          };
+          await checkpoint();
+          break;
+        }
         let listing;
         let listingError;
         for (let attempt = 1; attempt <= settings.listingRetryAttempts; attempt += 1) {
@@ -369,12 +387,15 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
             state.jobs[job.jobId] = job;
             if (!previous) run.newJobs += 1;
             run.hydrated += 1;
+            run.hydratedByField[field] += 1;
           }
         }
         state.queryProgress[query.id] = { ...state.queryProgress[query.id], failedCandidates, companyBoardCandidates, lastCandidateId: candidate.jobId, hydratedSoFar: run.hydrated, checkpointedAt: isoNow() };
         await checkpoint();
         await waitWithHeartbeat(randomBetween(settings.minListingDelayMs ?? settings.minDelayMs ?? 0, settings.maxListingDelayMs ?? settings.maxDelayMs ?? 0), { stateStore, runId, shouldStop: () => false });
       }
+
+      if (deferredForQuota) continue;
 
       if (failedCandidates.length) {
         state.queryProgress[query.id] = { ...state.queryProgress[query.id], status: "pending_retry", stage: "listing", failedCandidates, runId: run.id, interruptedAt: isoNow() };
@@ -388,7 +409,10 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
       run.queriesCompleted += 1;
       if (!suppliedQueries) advanceQueryCursor(state, queryInventory, query);
       await checkpoint();
-      if (hydratedBeforeRunToday + run.hydrated >= settings.maxListingsPerRun) { run.stopReason = "daily_listing_target"; break; }
+      if (["engineering", "design"].every((candidateField) => hydratedForFieldToday(candidateField) >= fieldQuota(settings, candidateField))) {
+        run.stopReason = "daily_listing_target";
+        break;
+      }
       if (shouldStop()) { run.stopReason = "shutdown_requested"; break; }
       if (query === orderedQueries.at(-1)) break;
       const delayRange = run.queriesCompleted % settings.queryBurstSize === 0
@@ -396,6 +420,7 @@ export async function runDiscovery({ trigger = "manual", stateStore, searchProvi
         : [settings.minQueryDelayMs ?? settings.minDelayMs ?? 0, settings.maxQueryDelayMs ?? settings.maxDelayMs ?? 0];
       await waitWithHeartbeat(randomBetween(...delayRange), { stateStore, runId, shouldStop });
     }
+    if (!run.stopReason && hydratedBeforeRunToday.total + run.hydrated >= settings.maxListingsPerRun) run.stopReason = "daily_listing_target";
     recalculateCompanies(state);
     run.status = run.errors.length ? "completed_with_errors" : "completed";
   } catch (error) {

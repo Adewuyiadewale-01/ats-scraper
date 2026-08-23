@@ -4,7 +4,7 @@ Standalone daily job discovery and verification service. It builds your 180-sear
 
 ## What it does
 
-- Builds 12 ATS platforms × 5 roles × 3 search strategies.
+- Builds 12 ATS platforms × 8 roles × 3 search strategies: five Engineering roles plus Product Designer, UI/UX Designer, and Web Designer.
 - Runs only new, changed, or uncertain results through listing verification.
 - Identifies jobs by ATS job ID where possible, then by canonical URL, then a conservative fallback fingerprint.
 - Keeps every search source that found a job without creating duplicate rows.
@@ -101,6 +101,8 @@ Run `npm run reverify` after changing signal rules to recalculate stored jobs lo
 Company careers landing pages are recorded without job-page hydration and marked `company_board` in the existing `status` column. For Ashby, `/{company}` is a careers board while `/{company}/{job-id}` is an individual posting.
 
 The direct-junior search is treated as **query-qualified**, not final proof. A new result receives one lightweight listing confirmation. If it reappears unchanged with all signals confirmed, the bot records it as seen without reading the listing again.
+
+Daily listing collection is split evenly by field: with the default 180-listing target, Engineering receives 90 hydrated-listing slots and Design receives 90. The query inventory alternates fields. When a field reaches its allocation, its remaining already-collected candidates are checkpointed locally for a later run without repeating the Google search.
 
 Verified jobs are re-opened after the configured recheck interval even when the Google snippet is unchanged. Jobs missing from a successfully completed source query move through `possibly_closed` to `closed` after the configured number of misses.
 

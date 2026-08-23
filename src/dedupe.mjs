@@ -10,7 +10,7 @@ export function toCandidate(result, query) {
   return {
     jobId: stableHash(identity), canonicalUrl, atsJobId: jobId, title, snippet,
     displayLink: result.displayLink || new URL(canonicalUrl).hostname,
-    platform: query.platform, role: query.role, sourceQueries: [query.id],
+    platform: query.platform, role: query.role, field: query.field === "design" ? "design" : "engineering", sourceQueries: [query.id],
     queryType: query.type, resultHash: stableHash(`${title}|${snippet}|${canonicalUrl}`),
     fallbackFingerprint: stableHash(fallback)
   };
